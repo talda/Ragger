@@ -9,6 +9,13 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${file}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python Debugger: discord_bot.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "Ragger/examples/Frosthaven rules discord bot/discord_bot.py",
       "console": "integratedTerminal",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"

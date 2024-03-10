@@ -94,7 +94,7 @@ class Index:
         _, I = self.index.search(embeddings, k)
       
         array_1d_unique = np.unique(I.flatten())
-        ret = [self.ind_to_file[f] for f in array_1d_unique]
+        ret = [os.path.join(os.path.dirname(self.index_path), self.ind_to_file[f]) for f in array_1d_unique]
         return ret
     
         

@@ -1,4 +1,3 @@
-
 import math
 import os
 import openai
@@ -10,12 +9,14 @@ from openai_usage_logger import usageLogger
 
 
 class contextGenerator:
-    def __init__(self, index: Index, assistant: str) -> None:
-        self.context_query_builder = contextQueryBuilder(assistant)
+    def __init__(self, index: Index, assistant: str, llm: object) -> None:
+        self.context_query_builder = contextQueryBuilder(llm, assistant)
         self.index = index
         self.assistant = assistant
+        self.llm = llm
         self.is_helpful_query = '''
-        You are an Assistant responsible for helping detect whether the retrieved document contains information that is helpful for answering the user's question. For a given input, you need to output a single token: "Yes" or "No" indicating the retrieved document is helpful for answering the query.
+        You are an Assistant responsible for helping detect whether the retrieved document contains information that is helpful for answering the user's question. For a given input, you need to output a single word: "Yes", "No" or "Maybe" indicating the retrieved document is helpful for answering the query.
+        A document is considered helpful even if there is only one sentance in the document that is helpful.
         
         Query: How does a building's defense value increase when an attack occurs?
         Document: """When an attack occurs, the party must perform a defense check for each building targeted by the attack. For each defense check, draw a card from the town guard deck and add its bonus to Frosthaven’s total defense value (along with any modifiers from the event)."""
@@ -43,8 +44,8 @@ class contextGenerator:
         """
         queries = self.context_query_builder.build_search_query(user_question, hyde)
         return self._generate_context(queries["queries"], user_question)
-    
-    def _generate_context(self, queries: list[str], user_question='') -> str:
+
+    def _generate_context(self, queries: list[str], user_question="") -> str:
         """
         Generate context based on the given queries and user question.
 
@@ -55,29 +56,32 @@ class contextGenerator:
         Returns:
             str: The generated context text based on the queries and user question.
         """
-        
-        if len(queries) == 0: return ''
-        
+
+        if len(queries) == 0:
+            return ""
+
         context = self.index.get_context(queries)
         context_text = "Context:\n"
         helpful = []
         nothelpful = []
         for con_ind, filename in enumerate(context):
-            with open(f'{filename}', 'r') as file:
-                curr_context = file.read() 
+            with open(f"{filename}", "r") as file:
+                curr_context = file.read()
                 summary_context = self.is_helpful(curr_context, user_question)
+                # summary_context = self.is_helpful(curr_context, "")
                 if summary_context:
-                    context_text += f'Context {con_ind}:\n' + curr_context + '\n'
+                    context_text += f"Context {con_ind}:\n" + curr_context + "\n"
                     helpful.append(filename)
                 else:
                     nothelpful.append(filename)
-                
-        print(f'helpful: {helpful}, nothelpful: {nothelpful}')
+
+        print(f"helpful: {helpful}, nothelpful: {nothelpful}")
         return context_text
-    
+
     def is_helpful(self, context: str, user_question: str) -> bool:
-        
-        if user_question == '': return True
+
+        if user_question == "":
+            return True
 
         query_prompt = '''
         Query: {query}
@@ -85,19 +89,33 @@ class contextGenerator:
         Relevant:
         '''
 
+        # response = openai.chat.completions.create(
+        #     model=os.environ["MODEL_NAME"],
+        #     messages=[
+        #         {"role": "system", "content": self.is_helpful_query},
+        #         {"role": "user", "content": query_prompt.format(query=user_question, document=context)}
+        #     ],
+        #     temperature=0,
+        #     seed=12345,
+        #     logprobs=True,
+        #     max_tokens=1,
+        #     logit_bias={3363: 1, 1400: 1},
+        # )
+        # usageLogger().log(response, 'is_helpful')
+        # ret = math.e**(response.choices[0].logprobs.content[0].logprob) > 0.5 and response.choices[0].message.content == 'Yes'
+        # return ret
 
-        response = openai.chat.completions.create(
-            model=os.environ["MODEL_NAME"],      
-            messages=[
-                {"role": "system", "content": self.is_helpful_query},
-                {"role": "user", "content": query_prompt.format(query=user_question, document=context)}
+        response = self.llm.create_response(
+            messeges=[
+                {
+                    "role": "user",
+                    "content": query_prompt.format(
+                        query=user_question, document=context
+                    ),
+                }
             ],
-            temperature=0,
-            seed=12345,
-            logprobs=True,
+            system_prompt=self.is_helpful_query,
             max_tokens=1,
-            logit_bias={3363: 1, 1400: 1},
         )
-        usageLogger().log(response, 'is_helpful')
-        ret = math.e**(response.choices[0].logprobs.content[0].logprob) > 0.5 and response.choices[0].message.content == 'Yes'
-        return ret
+        print(response.choices[0].message.content)
+        return response.choices[0].message.content != "No"
